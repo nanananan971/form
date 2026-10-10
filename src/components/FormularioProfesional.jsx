@@ -183,7 +183,9 @@ export function FormularioProfesional() {
     const [h, m] = startTime.split(':');
     const horaLegible = `${h}:${m}`;
 
-    const telefonoClinica = profesional.phone || '56900000000'; 
+    // Lectura estricta de la columna 'phone' con limpieza de dígitos
+    const telefonoRaw = profesional.phone || '56949819428';
+    const telefonoClinica = String(telefonoRaw).replace(/\D/g, ''); 
     
     const textoMensaje = encodeURIComponent(
       `Hola ${profesional.full_name || 'Clínica'}, acabo de realizar el pago del abono de $${Number(profesional.monto_abono || 0).toLocaleString('es-CL')} para mi cita agendada el día ${slotDate} a las ${horaLegible}. Mi nombre es ${nombre}. Adjunto mi comprobante.`

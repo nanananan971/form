@@ -47,14 +47,14 @@ export function FormularioProfesional() {
         const ahora = new Date();
         const tiempoMinimoPermitido = new Date(ahora.getTime() + 3 * 60 * 60 * 1000);
 
-        const año = ahora.getFullYear();
-        const mes = ahora.getMonth();
-        const diasEnMes = new Date(año, mes + 1, 0).getDate();
+        // CONFIGURACIÓN DE VENTANA: Mostrar los próximos 30 días a partir de hoy
+        const DIAS_A_MOSTRAR = 30;
 
-        for (let dia = ahora.getDate(); dia <= diasEnMes; dia++) {
-          const fechaObj = new Date(año, mes, dia);
+        for (let i = 0; i < DIAS_A_MOSTRAR; i++) {
+          const fechaObj = new Date();
+          fechaObj.setDate(ahora.getDate() + i);
+
           const dayOfWeek = fechaObj.getDay();
-
           const yearStr = fechaObj.getFullYear();
           const monthStr = String(fechaObj.getMonth() + 1).padStart(2, '0');
           const dayStr = String(fechaObj.getDate()).padStart(2, '0');
@@ -183,7 +183,6 @@ export function FormularioProfesional() {
     const [h, m] = startTime.split(':');
     const horaLegible = `${h}:${m}`;
 
-    // Lectura estricta de la columna 'phone' con limpieza de dígitos
     const telefonoRaw = profesional.phone || '56949819428';
     const telefonoClinica = String(telefonoRaw).replace(/\D/g, ''); 
     

@@ -12,9 +12,13 @@ export function FormularioProfesional() {
   const [horariosDisponibles, setHorariosDisponibles] = useState([]);
   const [slotSeleccionado, setSlotSeleccionado] = useState('');
   
+  // Datos del paciente y selección de formulario
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [servicioSeleccionado, setServicioSeleccionado] = useState('');
+  const [modalidadSeleccionada, setModalidadSeleccionada] = useState('');
+  const [comunaSeleccionada, setComunaSeleccionada] = useState('');
   
   const [pasoPago, setPasoPago] = useState(false); 
   const [mensajeAlerta, setMensajeAlerta] = useState('');
@@ -36,6 +40,17 @@ export function FormularioProfesional() {
       const prof = profData[0];
       setProfesional(prof);
 
+      // Preseleccionar la primera modalidad activa por defecto
+      const mods = prof.modalidades || { presencial: true, domicilio: false };
+      if (mods.presencial) setModalidadSeleccionada('presencial');
+      else if (mods.domicilio) setModalidadSeleccionada('domicilio');
+
+      // Preseleccionar el primer servicio si existe
+      const servs = Array.isArray(prof.servicios) ? prof.servicios : [];
+      if (servs.length > 0) {
+        setServicioSeleccionado(servs[0].nombre);
+      }
+
       const { data: slotInfo, error: slotError } = await supabase
         .rpc('get_public_availability', { p_professional_id: prof.id });
 
@@ -45,9 +60,9 @@ export function FormularioProfesional() {
 
         const slotsGenerados = [];
         const ahora = new Date();
-        const tiempoMinimoPermitido = new Date(ahora.getTime() + 3 * 60 * 60 * 1000);
+        // Margen de seguridad estricto de 1 hora a partir de ahora
+        const tiempoMinimoPermitido = new Date(ahora.getTime() + 60 * 60 * 1000);
 
-        // CONFIGURACIÓN DE VENTANA: Mostrar los próximos 30 días a partir de hoy
         const DIAS_A_MOSTRAR = 30;
 
         for (let i = 0; i < DIAS_A_MOSTRAR; i++) {
@@ -87,6 +102,7 @@ export function FormularioProfesional() {
               const slotDateTimeStr = `${fechaFormatoSql}T${timeShort}`;
               const slotDateObj = new Date(slotDateTimeStr);
 
+              // Descartar horas que ya pasaron en el día o con menos de 1 hora de margen
               const esMuyPronto = slotDateObj < tiempoMinimoPermitido;
 
               const estaOcupadoEnDb = apptsData.some(app => {
@@ -132,6 +148,10 @@ export function FormularioProfesional() {
       setMensajeAlerta('Por favor completa todos tus datos de contacto.');
       return;
     }
+    if (modalidadSeleccionada === 'domicilio' && profesional.comunas_cobertura?.length > 0 && !comunaSeleccionada) {
+      setMensajeAlerta('Por favor selecciona la comuna para tu atención a domicilio.');
+      return;
+    }
 
     setMensajeAlerta('');
 
@@ -152,6 +172,8 @@ export function FormularioProfesional() {
       
       const startDateObj = new Date(startDateTimeIso);
       const endDateObj = new Date(startDateObj.getTime() + 30 * 60000);
+
+      const notasAdicionales = `Servicio: ${servicioSeleccionado} | Modalidad: ${modalidadSeleccionada}${modalidadSeleccionada === 'domicilio' ? ` (${comunaSeleccionada})` : ''}`;
 
       const { error: rpcError } = await supabase.rpc('crear_reserva_publica', {
         p_professional_id: profesional.id,
@@ -187,7 +209,7 @@ export function FormularioProfesional() {
     const telefonoClinica = String(telefonoRaw).replace(/\D/g, ''); 
     
     const textoMensaje = encodeURIComponent(
-      `Hola ${profesional.full_name || 'Clínica'}, acabo de realizar el pago del abono de $${Number(profesional.monto_abono || 0).toLocaleString('es-CL')} para mi cita agendada el día ${slotDate} a las ${horaLegible}. Mi nombre es ${nombre}. Adjunto mi comprobante.`
+      `Hola ${profesional.full_name || 'Clínica'}, acabo de realizar el pago del abono de $${Number(profesional.monto_abono || 0).toLocaleString('es-CL')} para mi cita de ${servicioSeleccionado} (${modalidadSeleccionada}) agendada el día ${slotDate} a las ${horaLegible}. Mi nombre es ${nombre}. Adjunto comprobante.`
     );
 
     window.location.href = `https://wa.me/${telefonoClinica}?text=${textoMensaje}`;
@@ -215,6 +237,11 @@ export function FormularioProfesional() {
     );
   }
 
+  const serviciosList = Array.isArray(profesional.servicios) ? profesional.servicios : [];
+  const modalidades = profesional.modalidades || { presencial: true, domicilio: false };
+  const comunasCobertura = Array.isArray(profesional.comunas_cobertura) ? profesional.comunas_cobertura : [];
+  const instruccionesList = Array.isArray(profesional.mensaje_bienvenida) ? profesional.mensaje_bienvenida : [];
+
   return (
     <div style={{ 
       minHeight: '100vh', 
@@ -227,39 +254,67 @@ export function FormularioProfesional() {
     }}>
       <div style={{ 
         width: '100%', 
-        maxWidth: '580px', 
+        maxWidth: '620px', 
         background: '#ffffff', 
         borderRadius: '24px', 
         boxShadow: '0 20px 35px -10px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03)',
         overflow: 'hidden',
         border: '1px solid rgba(226, 232, 240, 0.8)'
       }}>
-        {/* Cabecera estilizada */}
+        {/* Cabecera con foto real del profesional y nombre */}
         <div style={{ 
           background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', 
           padding: '32px 24px', 
           color: '#ffffff',
-          textAlign: 'center' 
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '12px'
         }}>
-          <span style={{ 
-            display: 'inline-block', 
-            background: 'rgba(255, 255, 255, 0.15)', 
-            padding: '4px 12px', 
-            borderRadius: '20px', 
-            fontSize: '12px', 
-            fontWeight: '600', 
-            letterSpacing: '0.5px',
-            marginBottom: '10px',
-            textTransform: 'uppercase'
+          {/* Avatar del profesional */}
+          <div style={{
+            width: '84px',
+            height: '84px',
+            borderRadius: '50%',
+            border: '3px solid rgba(255, 255, 255, 0.8)',
+            overflow: 'hidden',
+            background: '#ffffff',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
           }}>
-            {profesional.clinic_name || 'Centro Podológico'}
-          </span>
-          <h2 style={{ fontSize: '22px', fontWeight: '700', margin: '0 0 6px', letterSpacing: '-0.025em' }}>
-            {pasoPago ? 'Confirmación de Abono' : 'Reserva tu Cita'}
-          </h2>
-          <p style={{ fontSize: '14px', opacity: 0.9, margin: 0, fontWeight: '400' }}>
-            Atención con <strong style={{ fontWeight: '600' }}>{profesional.full_name || slug}</strong>
-          </p>
+            {profesional.avatar_url ? (
+              <img src={profesional.avatar_url} alt="Perfil profesional" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            ) : (
+              <span style={{ fontSize: '28px', fontWeight: 'bold', color: '#0284c7' }}>
+                {(profesional.full_name || 'P')[0]?.toUpperCase()}
+              </span>
+            )}
+          </div>
+
+          <div>
+            <span style={{ 
+              display: 'inline-block', 
+              background: 'rgba(255, 255, 255, 0.15)', 
+              padding: '3px 12px', 
+              borderRadius: '20px', 
+              fontSize: '11px', 
+              fontWeight: '600', 
+              letterSpacing: '0.5px',
+              marginBottom: '6px',
+              textTransform: 'uppercase'
+            }}>
+              {profesional.clinic_name || 'Centro Podológico'}
+            </span>
+            <h2 style={{ fontSize: '22px', fontWeight: '700', margin: '0 0 4px', letterSpacing: '-0.025em' }}>
+              {pasoPago ? 'Confirmación de Abono' : 'Reserva tu Cita'}
+            </h2>
+            <p style={{ fontSize: '14px', opacity: 0.9, margin: 0, fontWeight: '400' }}>
+              Atención con <strong style={{ fontWeight: '600' }}>{profesional.full_name || slug}</strong>
+            </p>
+          </div>
         </div>
 
         {/* Contenido principal */}
@@ -267,8 +322,113 @@ export function FormularioProfesional() {
           <MensajeAlerta mensaje={mensajeAlerta} />
           
           {!pasoPago ? (
-            <form onSubmit={handleContinuar} style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
+            <form onSubmit={handleContinuar} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* Selección de Servicio */}
+              {serviciosList.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Selecciona el servicio:</label>
+                  <select
+                    value={servicioSeleccionado}
+                    onChange={(e) => setServicioSeleccionado(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      fontSize: '14px',
+                      outline: 'none'
+                    }}
+                  >
+                    {serviciosList.map((s, idx) => (
+                      <option key={idx} value={s.nombre}>
+                        {s.nombre} — ${Number(s.precio || 0).toLocaleString('es-CL')} CLP
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Selección de Modalidad */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Modalidad de atención:</label>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  {modalidades.presencial && (
+                    <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '8px', border: modalidadSeleccionada === 'presencial' ? '2px solid #0284c7' : '1px solid #cbd5e1', background: modalidadSeleccionada === 'presencial' ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
+                      <input 
+                        type="radio" 
+                        name="modalidad" 
+                        checked={modalidadSeleccionada === 'presencial'} 
+                        onChange={() => setModalidadSeleccionada('presencial')} 
+                      />
+                      🏥 Presencial
+                    </label>
+                  )}
+                  {modalidades.domicilio && (
+                    <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '8px', border: modalidadSeleccionada === 'domicilio' ? '2px solid #0284c7' : '1px solid #cbd5e1', background: modalidadSeleccionada === 'domicilio' ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
+                      <input 
+                        type="radio" 
+                        name="modalidad" 
+                        checked={modalidadSeleccionada === 'domicilio'} 
+                        onChange={() => setModalidadSeleccionada('domicilio')} 
+                      />
+                      🏠 A Domicilio
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Si es Presencial: Mostrar Dirección + Mapa interactivo Google Maps */}
+              {modalidadSeleccionada === 'presencial' && profesional.direccion_consulta && (
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <p style={{ fontSize: '13px', color: '#334155', margin: 0, fontWeight: '600' }}>
+                    📍 Dirección: {profesional.direccion_consulta}
+                  </p>
+                  <div style={{ width: '100%', height: '140px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+                    <iframe
+                      title="Mapa de ubicación"
+                      width="100%"
+                      height="100%"
+                      frameBorder="0"
+                      style={{ border: 0 }}
+                      src={`https://maps.google.com/maps?q=${encodeURIComponent(profesional.direccion_consulta)}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                      allowFullScreen
+                    ></iframe>
+                  </div>
+                </div>
+              )}
+
+              {/* Si es a Domicilio: Desplegable con comunas de cobertura */}
+              {modalidadSeleccionada === 'domicilio' && comunasCobertura.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Selecciona tu comuna:</label>
+                  <select
+                    value={comunaSeleccionada}
+                    onChange={(e) => setComunaSeleccionada(e.target.value)}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      fontSize: '14px',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="">-- Elige tu comuna --</option>
+                    {comunasCobertura.map((comuna, idx) => (
+                      <option key={idx} value={comuna}>{comuna}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Datos de contacto */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '14px' }}>
                 <CamposFormulario 
                   label="Nombre completo" 
                   type="text" 
@@ -293,7 +453,8 @@ export function FormularioProfesional() {
                   />
                 </div>
               </div>
-              
+
+              {/* Selector de Horarios */}
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                 <SelectorHorarios 
                   slotSeleccionado={slotSeleccionado} 
@@ -301,6 +462,20 @@ export function FormularioProfesional() {
                   horariosDisponibles={horariosDisponibles} 
                 />
               </div>
+
+              {/* Instrucciones / Recomendaciones previas (si configuró) */}
+              {instruccionesList.length > 0 && (
+                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '14px' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '650', color: '#0369a1', margin: '0 0 6px' }}>
+                    💡 Recomendaciones importantes:
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: '#334155', lineHeight: '1.4' }}>
+                    {instruccionesList.map((inst, idx) => (
+                      <li key={idx}>{inst}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <button 
                 type="submit" 
@@ -314,7 +489,7 @@ export function FormularioProfesional() {
                   border: 'none',
                   cursor: 'pointer',
                   fontSize: '15px',
-                  marginTop: '6px',
+                  marginTop: '4px',
                   boxShadow: '0 10px 15px -3px rgba(2, 132, 199, 0.25)',
                   transition: 'all 0.2s ease'
                 }}
@@ -356,8 +531,7 @@ export function FormularioProfesional() {
                   fontWeight: '700',
                   textDecoration: 'none',
                   fontSize: '15px',
-                  boxShadow: '0 10px 15px -3px rgba(0, 158, 227, 0.25)',
-                  transition: 'transform 0.1s ease'
+                  boxShadow: '0 10px 15px -3px rgba(0, 158, 227, 0.25)'
                 }}
               >
                 <span>💳</span> Pagar Abono en Mercado Pago
@@ -382,8 +556,7 @@ export function FormularioProfesional() {
                   cursor: submitting ? 'not-allowed' : 'pointer',
                   opacity: submitting ? 0.7 : 1,
                   fontSize: '15px',
-                  boxShadow: '0 10px 15px -3px rgba(34, 197, 94, 0.25)',
-                  transition: 'transform 0.1s ease'
+                  boxShadow: '0 10px 15px -3px rgba(34, 197, 94, 0.25)'
                 }}
               >
                 <span>💬</span> {submitting ? 'Procesando cita...' : 'Ya pagué, enviar comprobante por WhatsApp'}

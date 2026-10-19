@@ -19,8 +19,12 @@ export function FormularioProfesional() {
   const [servicioSeleccionado, setServicioSeleccionado] = useState('');
   const [modalidadSeleccionada, setModalidadSeleccionada] = useState('');
   const [comunaSeleccionada, setComunaSeleccionada] = useState('');
+  const [direccionCliente, setDireccionCliente] = useState('');
   
+  // Estados de flujo y confirmación
   const [pasoPago, setPasoPago] = useState(false); 
+  const [pagoIniciado, setPagoIniciado] = useState(false); 
+  const [reservaExitosa, setReservaExitosa] = useState(false); // NUEVO: Muestra el modal de confirmación final
   const [mensajeAlerta, setMensajeAlerta] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -40,12 +44,10 @@ export function FormularioProfesional() {
       const prof = profData[0];
       setProfesional(prof);
 
-      // Preseleccionar la primera modalidad activa por defecto
       const mods = prof.modalidades || { presencial: true, domicilio: false };
       if (mods.presencial) setModalidadSeleccionada('presencial');
       else if (mods.domicilio) setModalidadSeleccionada('domicilio');
 
-      // Preseleccionar el primer servicio si existe
       const servs = Array.isArray(prof.servicios) ? prof.servicios : [];
       if (servs.length > 0) {
         setServicioSeleccionado(servs[0].nombre);
@@ -60,9 +62,7 @@ export function FormularioProfesional() {
 
         const slotsGenerados = [];
         const ahora = new Date();
-        // Margen de seguridad estricto de 1 hora a partir de ahora
         const tiempoMinimoPermitido = new Date(ahora.getTime() + 60 * 60 * 1000);
-
         const DIAS_A_MOSTRAR = 30;
 
         for (let i = 0; i < DIAS_A_MOSTRAR; i++) {
@@ -101,8 +101,6 @@ export function FormularioProfesional() {
 
               const slotDateTimeStr = `${fechaFormatoSql}T${timeShort}`;
               const slotDateObj = new Date(slotDateTimeStr);
-
-              // Descartar horas que ya pasaron en el día o con menos de 1 hora de margen
               const esMuyPronto = slotDateObj < tiempoMinimoPermitido;
 
               const estaOcupadoEnDb = apptsData.some(app => {
@@ -138,7 +136,7 @@ export function FormularioProfesional() {
     if (slug) cargarDatosProfesional();
   }, [slug]);
 
-  const handleContinuar = (e) => {
+  const handleContinuar = async (e) => {
     e.preventDefault();
     if (!slotSeleccionado) {
       setMensajeAlerta('Por favor selecciona un horario disponible.');
@@ -148,17 +146,28 @@ export function FormularioProfesional() {
       setMensajeAlerta('Por favor completa todos tus datos de contacto.');
       return;
     }
-    if (modalidadSeleccionada === 'domicilio' && profesional.comunas_cobertura?.length > 0 && !comunaSeleccionada) {
-      setMensajeAlerta('Por favor selecciona la comuna para tu atención a domicilio.');
-      return;
+    if (modalidadSeleccionada === 'domicilio') {
+      const comunasCobertura = Array.isArray(profesional.comunas_cobertura) ? profesional.comunas_cobertura : [];
+      if (comunasCobertura.length > 0 && !comunaSeleccionada) {
+        setMensajeAlerta('Por favor selecciona la comuna para tu atención a domicilio.');
+        return;
+      }
+      if (!direccionCliente.trim()) {
+        setMensajeAlerta('Por favor ingresa tu dirección exacta para la atención a domicilio.');
+        return;
+      }
     }
 
     setMensajeAlerta('');
 
     if (profesional.requiere_abono && profesional.mp_payment_link) {
       setPasoPago(true);
+      setPagoIniciado(false); 
     } else {
-      ejecutarReserva();
+      const exito = await ejecutarReserva();
+      if (exito) {
+        setReservaExitosa(true); // Despliega la ventana de confirmación directamente
+      }
     }
   };
 
@@ -173,19 +182,21 @@ export function FormularioProfesional() {
       const startDateObj = new Date(startDateTimeIso);
       const endDateObj = new Date(startDateObj.getTime() + 30 * 60000);
 
-      const notasAdicionales = `Servicio: ${servicioSeleccionado} | Modalidad: ${modalidadSeleccionada}${modalidadSeleccionada === 'domicilio' ? ` (${comunaSeleccionada})` : ''}`;
-
       const { error: rpcError } = await supabase.rpc('crear_reserva_publica', {
         p_professional_id: profesional.id,
         p_nombre: nombre.trim(),
         p_email: email.trim(),
         p_telefono: telefono.trim(),
         p_start_time: startDateObj.toISOString(),
-        p_end_time: endDateObj.toISOString()
+        p_end_time: endDateObj.toISOString(),
+        p_modalidad: modalidadSeleccionada,
+        p_comuna: modalidadSeleccionada === 'domicilio' ? comunaSeleccionada : null,
+        p_direccion: modalidadSeleccionada === 'domicilio' ? direccionCliente.trim() : null
       });
 
       if (rpcError) throw rpcError;
 
+      setSubmitting(false);
       return true;
     } catch (error) {
       console.error('Error al agendar:', error);
@@ -195,11 +206,18 @@ export function FormularioProfesional() {
     }
   };
 
+  const handlePagarMercadoPago = () => {
+    setPagoIniciado(true); 
+    window.open(profesional.mp_payment_link, '_blank');
+  };
+
   const handleAvisarWhatsApp = async () => {
     setSubmitting(true);
     const exito = await ejecutarReserva();
     
     if (!exito) return;
+
+    setReservaExitosa(true); // Mostrar modal de confirmación en la web
 
     const [slotDate, startTime] = slotSeleccionado.split('|');
     const [h, m] = startTime.split(':');
@@ -209,10 +227,10 @@ export function FormularioProfesional() {
     const telefonoClinica = String(telefonoRaw).replace(/\D/g, ''); 
     
     const textoMensaje = encodeURIComponent(
-      `Hola ${profesional.full_name || 'Clínica'}, acabo de realizar el pago del abono de $${Number(profesional.monto_abono || 0).toLocaleString('es-CL')} para mi cita de ${servicioSeleccionado} (${modalidadSeleccionada}) agendada el día ${slotDate} a las ${horaLegible}. Mi nombre es ${nombre}. Adjunto comprobante.`
+      `Hola ${profesional.full_name || 'Clínica'}, acabo de realizar la reserva para mi cita de ${servicioSeleccionado} (${modalidadSeleccionada}${modalidadSeleccionada === 'domicilio' ? ` en ${comunaSeleccionada},${direccionCliente}` : ''}) agendada el día ${slotDate} a las ${horaLegible}. Mi nombre es ${nombre}.`
     );
 
-    window.location.href = `https://wa.me/${telefonoClinica}?text=${textoMensaje}`;
+    window.open(`https://wa.me/${telefonoClinica}?text=${textoMensaje}`, '_blank');
   };
 
   if (loading) {
@@ -242,6 +260,9 @@ export function FormularioProfesional() {
   const comunasCobertura = Array.isArray(profesional.comunas_cobertura) ? profesional.comunas_cobertura : [];
   const instruccionesList = Array.isArray(profesional.mensaje_bienvenida) ? profesional.mensaje_bienvenida : [];
 
+  const [slotDate, startTime] = slotSeleccionado ? slotSeleccionado.split('|') : ['', ''];
+  const horaLegible = startTime ? startTime.slice(0, 5) : '';
+
   return (
     <div style={{ 
       minHeight: '100vh', 
@@ -261,7 +282,7 @@ export function FormularioProfesional() {
         overflow: 'hidden',
         border: '1px solid rgba(226, 232, 240, 0.8)'
       }}>
-        {/* Cabecera con foto real del profesional y nombre */}
+        {/* Cabecera */}
         <div style={{ 
           background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', 
           padding: '32px 24px', 
@@ -272,7 +293,6 @@ export function FormularioProfesional() {
           alignItems: 'center',
           gap: '12px'
         }}>
-          {/* Avatar del profesional */}
           <div style={{
             width: '84px',
             height: '84px',
@@ -309,7 +329,7 @@ export function FormularioProfesional() {
               {profesional.clinic_name || 'Centro Podológico'}
             </span>
             <h2 style={{ fontSize: '22px', fontWeight: '700', margin: '0 0 4px', letterSpacing: '-0.025em' }}>
-              {pasoPago ? 'Confirmación de Abono' : 'Reserva tu Cita'}
+              {reservaExitosa ? '¡Cita Reservada con Éxito!' : pasoPago ? 'Confirmación de Abono' : 'Reserva tu Cita'}
             </h2>
             <p style={{ fontSize: '14px', opacity: 0.9, margin: 0, fontWeight: '400' }}>
               Atención con <strong style={{ fontWeight: '600' }}>{profesional.full_name || slug}</strong>
@@ -317,14 +337,91 @@ export function FormularioProfesional() {
           </div>
         </div>
 
-        {/* Contenido principal */}
+        {/* Contenido */}
         <div style={{ padding: '32px 28px' }}>
           <MensajeAlerta mensaje={mensajeAlerta} />
           
-          {!pasoPago ? (
+          {reservaExitosa ? (
+            /* VISTA DE CONFIRMACIÓN FINAL (COMPROBANTE) */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'center' }}>
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '16px', padding: '24px 20px' }}>
+                <div style={{ width: '50px', height: '50px', background: '#22c55e', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', margin: '0 auto 12px' }}>
+                  ✓
+                </div>
+                <h3 style={{ margin: '0 0 6px', fontSize: '18px', color: '#166534', fontWeight: '700' }}>
+                  ¡Reserva Registrada Exitosamente!
+                </h3>
+                <p style={{ margin: 0, fontSize: '13px', color: '#15803d' }}>
+                  Hemos registrado tus datos. A continuación tienes el resumen de tu atención:
+                </p>
+              </div>
+
+              {/* Tarjeta de Resumen */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                  📋 Detalle de la Cita
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px' }}>
+                  <div>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>PACIENTE</span>
+                    <strong style={{ color: '#334155' }}>{nombre}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>TELÉFONO</span>
+                    <strong style={{ color: '#334155' }}>{telefono}</strong>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px' }}>
+                  <div>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>FECHA Y HORA</span>
+                    <strong style={{ color: '#0284c7' }}>{slotDate} a las {horaLegible} hrs.</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>SERVICIO</span>
+                    <strong style={{ color: '#334155' }}>{servicioSeleccionado}</strong>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '13px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>MODALIDAD Y UBICACIÓN</span>
+                  <strong style={{ color: '#334155' }}>
+                    {modalidadSeleccionada === 'presencial' ? (
+                      `🏥 Presencial — ${profesional.direccion_consulta || 'En consulta'}`
+                    ) : (
+                      `🏠 A Domicilio — Comuna: ${comunaSeleccionada} (${direccionCliente})`
+                    )}
+                  </strong>
+                </div>
+
+                <div style={{ fontSize: '13px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>CENTRO / PROFESIONAL</span>
+                  <strong style={{ color: '#334155' }}>{profesional.clinic_name} ({profesional.full_name})</strong>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  borderRadius: '12px',
+                  background: '#0284c7',
+                  color: '#fff',
+                  fontWeight: '600',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Volver al inicio
+              </button>
+            </div>
+          ) : !pasoPago ? (
             <form onSubmit={handleContinuar} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* Selección de Servicio */}
               {serviciosList.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Selecciona el servicio:</label>
@@ -351,7 +448,6 @@ export function FormularioProfesional() {
                 </div>
               )}
 
-              {/* Selección de Modalidad */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Modalidad de atención:</label>
                 <div style={{ display: 'flex', gap: '12px' }}>
@@ -380,7 +476,6 @@ export function FormularioProfesional() {
                 </div>
               </div>
 
-              {/* Si es Presencial: Mostrar Dirección + Mapa interactivo Google Maps */}
               {modalidadSeleccionada === 'presencial' && profesional.direccion_consulta && (
                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <p style={{ fontSize: '13px', color: '#334155', margin: 0, fontWeight: '600' }}>
@@ -400,34 +495,57 @@ export function FormularioProfesional() {
                 </div>
               )}
 
-              {/* Si es a Domicilio: Desplegable con comunas de cobertura */}
-              {modalidadSeleccionada === 'domicilio' && comunasCobertura.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Selecciona tu comuna:</label>
-                  <select
-                    value={comunaSeleccionada}
-                    onChange={(e) => setComunaSeleccionada(e.target.value)}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      background: '#ffffff',
-                      color: '#0f172a',
-                      fontSize: '14px',
-                      outline: 'none'
-                    }}
-                  >
-                    <option value="">-- Elige tu comuna --</option>
-                    {comunasCobertura.map((comuna, idx) => (
-                      <option key={idx} value={comuna}>{comuna}</option>
-                    ))}
-                  </select>
+              {modalidadSeleccionada === 'domicilio' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  {comunasCobertura.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Selecciona tu comuna:</label>
+                      <select
+                        value={comunaSeleccionada}
+                        onChange={(e) => setComunaSeleccionada(e.target.value)}
+                        required
+                        style={{
+                          width: '100%',
+                          padding: '12px 14px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
+                          color: '#0f172a',
+                          fontSize: '14px',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="">-- Elige tu comuna --</option>
+                        {comunasCobertura.map((comuna, idx) => (
+                          <option key={idx} value={comuna}>{comuna}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Dirección exacta (Calle, número, depto):</label>
+                    <input
+                      type="text"
+                      value={direccionCliente}
+                      onChange={(e) => setDireccionCliente(e.target.value)}
+                      placeholder="Ej. Av. Vicuña Mackenna 4320, Depto 42"
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '12px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '14px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
                 </div>
               )}
 
-              {/* Datos de contacto */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '14px' }}>
                 <CamposFormulario 
                   label="Nombre completo" 
@@ -454,7 +572,6 @@ export function FormularioProfesional() {
                 </div>
               </div>
 
-              {/* Selector de Horarios */}
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                 <SelectorHorarios 
                   slotSeleccionado={slotSeleccionado} 
@@ -463,7 +580,6 @@ export function FormularioProfesional() {
                 />
               </div>
 
-              {/* Instrucciones / Recomendaciones previas (si configuró) */}
               {instruccionesList.length > 0 && (
                 <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '14px' }}>
                   <p style={{ fontSize: '13px', fontWeight: '650', color: '#0369a1', margin: '0 0 6px' }}>
@@ -479,6 +595,7 @@ export function FormularioProfesional() {
 
               <button 
                 type="submit" 
+                disabled={submitting}
                 style={{
                   width: '100%',
                   padding: '15px',
@@ -487,14 +604,15 @@ export function FormularioProfesional() {
                   color: '#fff',
                   fontWeight: '600',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.7 : 1,
                   fontSize: '15px',
                   marginTop: '4px',
                   boxShadow: '0 10px 15px -3px rgba(2, 132, 199, 0.25)',
                   transition: 'all 0.2s ease'
                 }}
               >
-                {profesional.requiere_abono && profesional.mp_payment_link ? 'Continuar al pago de abono ➔' : 'Confirmar Reserva'}
+                {submitting ? 'Procesando...' : profesional.requiere_abono && profesional.mp_payment_link ? 'Continuar al pago de abono ➔' : 'Confirmar Reserva'}
               </button>
             </form>
           ) : (
@@ -509,16 +627,16 @@ export function FormularioProfesional() {
                 <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', textAlign: 'left' }}>
                   <p style={{ fontSize: '13px', color: '#334155', margin: '0 0 8px', fontWeight: '600' }}>Instrucciones:</p>
                   <ol style={{ fontSize: '13px', color: '#64748b', margin: 0, paddingLeft: '18px', lineHeight: '1.5' }}>
-                    <li>Haz clic en el botón azul para pagar en Mercado Pago.</li>
-                    <li>Al terminar, presiona el botón verde para enviar tu comprobante directamente por WhatsApp.</li>
+                    <li>Haz clic en el botón de abajo para pagar tu abono en Mercado Pago.</li>
+                    <li>Cuando termines el pago, regresa a esta misma pantalla.</li>
+                    <li>Se habilitará automáticamente el botón para notificar tu pago por WhatsApp.</li>
                   </ol>
                 </div>
               </div>
 
-              <a
-                href={profesional.mp_payment_link}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={handlePagarMercadoPago}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -529,38 +647,46 @@ export function FormularioProfesional() {
                   background: '#009ee3',
                   color: '#fff',
                   fontWeight: '700',
-                  textDecoration: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
                   fontSize: '15px',
                   boxShadow: '0 10px 15px -3px rgba(0, 158, 227, 0.25)'
                 }}
               >
                 <span>💳</span> Pagar Abono en Mercado Pago
-              </a>
-
-              <button
-                type="button"
-                onClick={handleAvisarWhatsApp}
-                disabled={submitting}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  padding: '15px',
-                  borderRadius: '14px',
-                  background: '#22c55e',
-                  color: '#fff',
-                  fontWeight: '700',
-                  border: 'none',
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                  opacity: submitting ? 0.7 : 1,
-                  fontSize: '15px',
-                  boxShadow: '0 10px 15px -3px rgba(34, 197, 94, 0.25)'
-                }}
-              >
-                <span>💬</span> {submitting ? 'Procesando cita...' : 'Ya pagué, enviar comprobante por WhatsApp'}
               </button>
+
+              {pagoIniciado && (
+                <div style={{ animation: 'fadeIn 0.3s ease-in-out', display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '16px' }}>
+                  <p style={{ fontSize: '13px', color: '#166534', fontWeight: '600', background: '#f0fdf4', padding: '10px', borderRadius: '8px', border: '1px solid #bbf7d0', margin: 0 }}>
+                    ¿Ya realizaste el pago en la otra pestaña?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAvisarWhatsApp}
+                    disabled={submitting}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      padding: '15px',
+                      borderRadius: '14px',
+                      background: '#22c55e',
+                      color: '#fff',
+                      fontWeight: '700',
+                      border: 'none',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                      opacity: submitting ? 0.7 : 1,
+                      fontSize: '15px',
+                      boxShadow: '0 10px 15px -3px rgba(34, 197, 94, 0.25)'
+                    }}
+                  >
+                    <span>💬</span> {submitting ? 'Registrando cita...' : 'Ya pagué, enviar comprobante por WhatsApp'}
+                  </button>
+                </div>
+              )}
 
               <button 
                 type="button" 

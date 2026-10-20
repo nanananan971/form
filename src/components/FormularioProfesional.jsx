@@ -12,7 +12,6 @@ export function FormularioProfesional() {
   const [horariosDisponibles, setHorariosDisponibles] = useState([]);
   const [slotSeleccionado, setSlotSeleccionado] = useState('');
   
-  // Datos del paciente y selección de formulario
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -21,17 +20,15 @@ export function FormularioProfesional() {
   const [comunaSeleccionada, setComunaSeleccionada] = useState('');
   const [direccionCliente, setDireccionCliente] = useState('');
   
-  // Estados de flujo y confirmación
   const [pasoPago, setPasoPago] = useState(false); 
   const [pagoIniciado, setPagoIniciado] = useState(false); 
-  const [reservaExitosa, setReservaExitosa] = useState(false); // NUEVO: Muestra el modal de confirmación final
+  const [reservaExitosa, setReservaExitosa] = useState(false);
   const [mensajeAlerta, setMensajeAlerta] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     async function cargarDatosProfesional() {
       setLoading(true);
-      
       const { data: profData, error: profError } = await supabase
         .rpc('get_public_professional', { p_form_id: slug.toLowerCase() });
 
@@ -49,9 +46,7 @@ export function FormularioProfesional() {
       else if (mods.domicilio) setModalidadSeleccionada('domicilio');
 
       const servs = Array.isArray(prof.servicios) ? prof.servicios : [];
-      if (servs.length > 0) {
-        setServicioSeleccionado(servs[0].nombre);
-      }
+      if (servs.length > 0) setServicioSeleccionado(servs[0].nombre);
 
       const { data: slotInfo, error: slotError } = await supabase
         .rpc('get_public_availability', { p_professional_id: prof.id });
@@ -59,7 +54,6 @@ export function FormularioProfesional() {
       if (!slotError && slotInfo) {
         const availabilityData = slotInfo.availability || [];
         const apptsData = slotInfo.appointments || [];
-
         const slotsGenerados = [];
         const ahora = new Date();
         const tiempoMinimoPermitido = new Date(ahora.getTime() + 60 * 60 * 1000);
@@ -68,7 +62,6 @@ export function FormularioProfesional() {
         for (let i = 0; i < DIAS_A_MOSTRAR; i++) {
           const fechaObj = new Date();
           fechaObj.setDate(ahora.getDate() + i);
-
           const dayOfWeek = fechaObj.getDay();
           const yearStr = fechaObj.getFullYear();
           const monthStr = String(fechaObj.getMonth() + 1).padStart(2, '0');
@@ -98,7 +91,6 @@ export function FormularioProfesional() {
               const m = (currentMinutes % 60).toString().padStart(2, '0');
               const timeStr = `${h}:${m}:00`;
               const timeShort = `${h}:${m}`;
-
               const slotDateTimeStr = `${fechaFormatoSql}T${timeShort}`;
               const slotDateObj = new Date(slotDateTimeStr);
               const esMuyPronto = slotDateObj < tiempoMinimoPermitido;
@@ -106,14 +98,7 @@ export function FormularioProfesional() {
               const estaOcupadoEnDb = apptsData.some(app => {
                 if (!app.start_time) return false;
                 const appDateObj = new Date(app.start_time);
-                const appYear = appDateObj.getFullYear();
-                const appMonth = String(appDateObj.getMonth() + 1).padStart(2, '0');
-                const appDay = String(appDateObj.getDate()).padStart(2, '0');
-                const appHour = String(appDateObj.getHours()).padStart(2, '0');
-                const appMin = String(appDateObj.getMinutes()).padStart(2, '0');
-                
-                const appFormatted = `${appYear}-${appMonth}-${appDay}T${appHour}:${appMin}`;
-                return appFormatted === slotDateTimeStr;
+                return `${appDateObj.getFullYear()}-${String(appDateObj.getMonth() + 1).padStart(2, '0')}-${String(appDateObj.getDate()).padStart(2, '0')}T${String(appDateObj.getHours()).padStart(2, '0')}:${String(appDateObj.getMinutes()).padStart(2, '0')}` === slotDateTimeStr;
               });
 
               slotsGenerados.push({
@@ -126,10 +111,8 @@ export function FormularioProfesional() {
             }
           });
         }
-
         setHorariosDisponibles(slotsGenerados);
       }
-
       setLoading(false);
     }
 
@@ -159,26 +142,21 @@ export function FormularioProfesional() {
     }
 
     setMensajeAlerta('');
-
     if (profesional.requiere_abono && profesional.mp_payment_link) {
       setPasoPago(true);
       setPagoIniciado(false); 
     } else {
       const exito = await ejecutarReserva();
-      if (exito) {
-        setReservaExitosa(true); // Despliega la ventana de confirmación directamente
-      }
+      if (exito) setReservaExitosa(true);
     }
   };
 
   const ejecutarReserva = async () => {
     setSubmitting(true);
     setMensajeAlerta('');
-
     try {
       const [slotDate, startTime] = slotSeleccionado.split('|');
       const startDateTimeIso = `${slotDate}T${startTime}`;
-      
       const startDateObj = new Date(startDateTimeIso);
       const endDateObj = new Date(startDateObj.getTime() + 30 * 60000);
 
@@ -195,7 +173,6 @@ export function FormularioProfesional() {
       });
 
       if (rpcError) throw rpcError;
-
       setSubmitting(false);
       return true;
     } catch (error) {
@@ -214,15 +191,12 @@ export function FormularioProfesional() {
   const handleAvisarWhatsApp = async () => {
     setSubmitting(true);
     const exito = await ejecutarReserva();
-    
     if (!exito) return;
 
-    setReservaExitosa(true); // Mostrar modal de confirmación en la web
-
+    setReservaExitosa(true);
     const [slotDate, startTime] = slotSeleccionado.split('|');
     const [h, m] = startTime.split(':');
     const horaLegible = `${h}:${m}`;
-
     const telefonoRaw = profesional.phone || '56949819428';
     const telefonoClinica = String(telefonoRaw).replace(/\D/g, ''); 
     
@@ -235,7 +209,7 @@ export function FormularioProfesional() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8fafc', color: '#64748b', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8fafc', color: '#64748b', fontFamily: 'system-ui, sans-serif', padding: '16px' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ width: '40px', height: '40px', border: '3px solid #0284c7', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }}></div>
           <p style={{ fontSize: '15px', fontWeight: '500' }}>Cargando agenda profesional...</p>
@@ -247,7 +221,7 @@ export function FormularioProfesional() {
   if (!profesional) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8fafc', padding: '16px', fontFamily: 'system-ui, sans-serif' }}>
-        <div style={{ textAlign: 'center', padding: '40px 32px', background: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', maxWidth: '400px', width: '100%' }}>
+        <div style={{ textAlign: 'center', padding: '40px 24px', background: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', maxWidth: '400px', width: '100%' }}>
           <h3 style={{ color: '#0f172a', marginBottom: '8px', fontSize: '20px', fontWeight: '700' }}>Profesional no encontrado</h3>
           <p style={{ fontSize: '14px', color: '#64748b', lineHeight: '1.5' }}>Verifica el enlace proporcionado e inténtalo nuevamente.</p>
         </div>
@@ -260,144 +234,146 @@ export function FormularioProfesional() {
   const comunasCobertura = Array.isArray(profesional.comunas_cobertura) ? profesional.comunas_cobertura : [];
   const instruccionesList = Array.isArray(profesional.mensaje_bienvenida) ? profesional.mensaje_bienvenida : [];
 
-  const [slotDate, startTime] = slotSeleccionado ? slotSeleccionado.split('|') : ['', ''];
+  const [, startTime] = slotSeleccionado ? slotSeleccionado.split('|') : ['', ''];
   const horaLegible = startTime ? startTime.slice(0, 5) : '';
+  const [slotDate] = slotSeleccionado ? slotSeleccionado.split('|') : ['', ''];
 
   return (
     <div style={{ 
       minHeight: '100vh', 
-      background: 'linear-gradient(135deg, #f0fdf4 0%, #f1f5f9 100%)', 
+      background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)', 
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center', 
-      padding: '24px 16px',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
+      padding: '32px 16px',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      boxSizing: 'border-box'
     }}>
       <div style={{ 
         width: '100%', 
-        maxWidth: '620px', 
+        maxWidth: '760px', 
         background: '#ffffff', 
-        borderRadius: '24px', 
-        boxShadow: '0 20px 35px -10px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03)',
+        borderRadius: '32px', 
+        boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.12), 0 4px 6px -4px rgba(15, 23, 42, 0.04)',
         overflow: 'hidden',
-        border: '1px solid rgba(226, 232, 240, 0.8)'
+        border: '1px solid rgba(226, 232, 240, 0.8)',
+        boxSizing: 'border-box'
       }}>
-        {/* Cabecera */}
+        {/* Cabecera Premium Estilo SaaS */}
         <div style={{ 
           background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', 
-          padding: '32px 24px', 
+          padding: '40px 24px', 
           color: '#ffffff',
           textAlign: 'center',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '12px'
+          gap: '16px',
+          boxSizing: 'border-box',
+          position: 'relative'
         }}>
           <div style={{
-            width: '84px',
-            height: '84px',
+            width: '96px',
+            height: '96px',
             borderRadius: '50%',
-            border: '3px solid rgba(255, 255, 255, 0.8)',
+            border: '4px solid rgba(255, 255, 255, 0.9)',
             overflow: 'hidden',
             background: '#ffffff',
-            boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0,
+            padding: '4px',
+            boxSizing: 'border-box'
           }}>
             {profesional.avatar_url ? (
-              <img src={profesional.avatar_url} alt="Perfil profesional" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              <img src={profesional.avatar_url} alt="Perfil profesional" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
             ) : (
-              <span style={{ fontSize: '28px', fontWeight: 'bold', color: '#0284c7' }}>
+              <span style={{ fontSize: '34px', fontWeight: 'bold', color: '#0284c7' }}>
                 {(profesional.full_name || 'P')[0]?.toUpperCase()}
               </span>
             )}
           </div>
 
-          <div>
+          <div style={{ width: '100%', boxSizing: 'border-box' }}>
             <span style={{ 
               display: 'inline-block', 
-              background: 'rgba(255, 255, 255, 0.15)', 
-              padding: '3px 12px', 
+              background: 'rgba(255, 255, 255, 0.2)', 
+              backdropFilter: 'blur(4px)',
+              padding: '6px 16px', 
               borderRadius: '20px', 
               fontSize: '11px', 
-              fontWeight: '600', 
-              letterSpacing: '0.5px',
-              marginBottom: '6px',
+              fontWeight: '800', 
+              letterSpacing: '1px',
+              marginBottom: '10px',
               textTransform: 'uppercase'
             }}>
               {profesional.clinic_name || 'Centro Podológico'}
             </span>
-            <h2 style={{ fontSize: '22px', fontWeight: '700', margin: '0 0 4px', letterSpacing: '-0.025em' }}>
-              {reservaExitosa ? '¡Cita Reservada con Éxito!' : pasoPago ? 'Confirmación de Abono' : 'Reserva tu Cita'}
-            </h2>
-            <p style={{ fontSize: '14px', opacity: 0.9, margin: 0, fontWeight: '400' }}>
-              Atención con <strong style={{ fontWeight: '600' }}>{profesional.full_name || slug}</strong>
+            <h1 style={{ fontSize: '26px', fontWeight: '800', margin: '0 0 6px', letterSpacing: '-0.025em', wordBreak: 'break-word' }}>
+              {reservaExitosa ? '¡Cita Reservada con Éxito!' : pasoPago ? 'Confirmación de Abono' : 'Reserva tu Cita Profesional'}
+            </h1>
+            <p style={{ fontSize: '14px', opacity: 0.9, margin: 0, fontWeight: '400', wordBreak: 'break-word' }}>
+              Atención especializada con <strong style={{ fontWeight: '600' }}>{profesional.full_name || slug}</strong>
             </p>
           </div>
         </div>
 
-        {/* Contenido */}
-        <div style={{ padding: '32px 28px' }}>
+        {/* Contenido principal con padding cómodo */}
+        <div style={{ padding: '36px 32px', boxSizing: 'border-box' }}>
           <MensajeAlerta mensaje={mensajeAlerta} />
           
           {reservaExitosa ? (
-            /* VISTA DE CONFIRMACIÓN FINAL (COMPROBANTE) */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'center' }}>
-              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '16px', padding: '24px 20px' }}>
-                <div style={{ width: '50px', height: '50px', background: '#22c55e', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', margin: '0 auto 12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', textAlign: 'center' }}>
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '20px', padding: '28px 20px' }}>
+                <div style={{ width: '56px', height: '56px', background: '#22c55e', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', margin: '0 auto 14px', boxShadow: '0 8px 20px rgba(34, 197, 94, 0.35)' }}>
                   ✓
                 </div>
-                <h3 style={{ margin: '0 0 6px', fontSize: '18px', color: '#166534', fontWeight: '700' }}>
+                <h3 style={{ margin: '0 0 6px', fontSize: '20px', color: '#166534', fontWeight: '800' }}>
                   ¡Reserva Registrada Exitosamente!
                 </h3>
-                <p style={{ margin: 0, fontSize: '13px', color: '#15803d' }}>
-                  Hemos registrado tus datos. A continuación tienes el resumen de tu atención:
+                <p style={{ margin: 0, fontSize: '14px', color: '#15803d' }}>
+                  Hemos registrado tus datos correctamente. Aquí tienes el resumen de tu atención:
                 </p>
               </div>
 
-              {/* Tarjeta de Resumen */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '24px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <p style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
                   📋 Detalle de la Cita
                 </p>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px' }}>
-                  <div>
-                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>PACIENTE</span>
-                    <strong style={{ color: '#334155' }}>{nombre}</strong>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '13px' }}>
+                  <div style={{ flex: '1 1 180px' }}>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '700', marginBottom: '3px' }}>PACIENTE</span>
+                    <strong style={{ color: '#1e293b', fontSize: '14px', wordBreak: 'break-word' }}>{nombre}</strong>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>TELÉFONO</span>
-                    <strong style={{ color: '#334155' }}>{telefono}</strong>
+                  <div style={{ flex: '1 1 180px' }}>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '700', marginBottom: '3px' }}>TELÉFONO</span>
+                    <strong style={{ color: '#1e293b', fontSize: '14px', wordBreak: 'break-word' }}>{telefono}</strong>
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px' }}>
-                  <div>
-                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>FECHA Y HORA</span>
-                    <strong style={{ color: '#0284c7' }}>{slotDate} a las {horaLegible} hrs.</strong>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '13px' }}>
+                  <div style={{ flex: '1 1 180px' }}>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '700', marginBottom: '3px' }}>FECHA Y HORA</span>
+                    <strong style={{ color: '#0284c7', fontSize: '14px', wordBreak: 'break-word' }}>{slotDate} a las {horaLegible} hrs.</strong>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>SERVICIO</span>
-                    <strong style={{ color: '#334155' }}>{servicioSeleccionado}</strong>
+                  <div style={{ flex: '1 1 180px' }}>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '700', marginBottom: '3px' }}>SERVICIO</span>
+                    <strong style={{ color: '#1e293b', fontSize: '14px', wordBreak: 'break-word' }}>{servicioSeleccionado}</strong>
                   </div>
                 </div>
 
                 <div style={{ fontSize: '13px' }}>
-                  <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>MODALIDAD Y UBICACIÓN</span>
-                  <strong style={{ color: '#334155' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '700', marginBottom: '3px' }}>MODALIDAD Y UBICACIÓN</span>
+                  <strong style={{ color: '#1e293b', fontSize: '14px', wordBreak: 'break-word' }}>
                     {modalidadSeleccionada === 'presencial' ? (
                       `🏥 Presencial — ${profesional.direccion_consulta || 'En consulta'}`
                     ) : (
                       `🏠 A Domicilio — Comuna: ${comunaSeleccionada} (${direccionCliente})`
                     )}
                   </strong>
-                </div>
-
-                <div style={{ fontSize: '13px' }}>
-                  <span style={{ color: '#64748b', display: 'block', fontSize: '11px', fontWeight: '600' }}>CENTRO / PROFESIONAL</span>
-                  <strong style={{ color: '#334155' }}>{profesional.clinic_name} ({profesional.full_name})</strong>
                 </div>
               </div>
 
@@ -406,82 +382,121 @@ export function FormularioProfesional() {
                 onClick={() => window.location.reload()}
                 style={{
                   width: '100%',
-                  padding: '14px',
-                  borderRadius: '12px',
+                  padding: '16px',
+                  borderRadius: '16px',
                   background: '#0284c7',
                   color: '#fff',
-                  fontWeight: '600',
+                  fontWeight: '750',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: '14px'
+                  fontSize: '15px',
+                  boxShadow: '0 8px 20px rgba(2, 132, 199, 0.3)',
+                  boxSizing: 'border-box'
                 }}
               >
                 Volver al inicio
               </button>
             </div>
           ) : !pasoPago ? (
-            <form onSubmit={handleContinuar} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <form onSubmit={handleContinuar} style={{ display: 'flex', flexDirection: 'column', gap: '26px', boxSizing: 'border-box' }}>
               
+              {/* Sección Servicios con estilo tarjeta */}
               {serviciosList.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Selecciona el servicio:</label>
-                  <select
-                    value={servicioSeleccionado}
-                    onChange={(e) => setServicioSeleccionado(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      background: '#ffffff',
-                      color: '#0f172a',
-                      fontSize: '14px',
-                      outline: 'none'
-                    }}
-                  >
-                    {serviciosList.map((s, idx) => (
-                      <option key={idx} value={s.nombre}>
-                        {s.nombre} — ${Number(s.precio || 0).toLocaleString('es-CL')} CLP
-                      </option>
-                    ))}
-                  </select>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <label style={{ fontSize: '14px', fontWeight: '750', color: '#1e293b' }}>
+                    ✨ Selecciona el servicio podológico:
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
+                    {serviciosList.map((s, idx) => {
+                      const isSelected = servicioSeleccionado === s.nombre;
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setServicioSeleccionado(s.nombre)}
+                          style={{
+                            padding: '16px',
+                            borderRadius: '16px',
+                            border: isSelected ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                            background: isSelected ? '#f0f9ff' : '#ffffff',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            boxShadow: isSelected ? '0 4px 12px rgba(2, 132, 199, 0.15)' : '0 1px 3px rgba(0,0,0,0.02)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px'
+                          }}
+                        >
+                          <span style={{ fontSize: '14px', fontWeight: '750', color: isSelected ? '#0369a1' : '#1e293b' }}>
+                            {s.nombre}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: '#0284c7' }}>
+                            ${Number(s.precio || 0).toLocaleString('es-CL')} CLP
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Modalidad de atención:</label>
-                <div style={{ display: 'flex', gap: '12px' }}>
+              {/* Sección Modalidad de Atención */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <label style={{ fontSize: '14px', fontWeight: '750', color: '#1e293b' }}>
+                  🏥 Modalidad de atención:
+                </label>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                   {modalidades.presencial && (
-                    <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '8px', border: modalidadSeleccionada === 'presencial' ? '2px solid #0284c7' : '1px solid #cbd5e1', background: modalidadSeleccionada === 'presencial' ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
-                      <input 
-                        type="radio" 
-                        name="modalidad" 
-                        checked={modalidadSeleccionada === 'presencial'} 
-                        onChange={() => setModalidadSeleccionada('presencial')} 
-                      />
+                    <div
+                      onClick={() => setModalidadSeleccionada('presencial')}
+                      style={{
+                        flex: '1 1 140px',
+                        padding: '16px',
+                        borderRadius: '16px',
+                        border: modalidadSeleccionada === 'presencial' ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                        background: modalidadSeleccionada === 'presencial' ? '#f0f9ff' : '#ffffff',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        fontWeight: '700',
+                        fontSize: '14px',
+                        color: modalidadSeleccionada === 'presencial' ? '#0369a1' : '#334155',
+                        boxShadow: modalidadSeleccionada === 'presencial' ? '0 4px 12px rgba(2, 132, 199, 0.15)' : '0 1px 3px rgba(0,0,0,0.02)',
+                        transition: 'all 0.2s'
+                      }}
+                    >
                       🏥 Presencial
-                    </label>
+                    </div>
                   )}
                   {modalidades.domicilio && (
-                    <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '8px', border: modalidadSeleccionada === 'domicilio' ? '2px solid #0284c7' : '1px solid #cbd5e1', background: modalidadSeleccionada === 'domicilio' ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
-                      <input 
-                        type="radio" 
-                        name="modalidad" 
-                        checked={modalidadSeleccionada === 'domicilio'} 
-                        onChange={() => setModalidadSeleccionada('domicilio')} 
-                      />
+                    <div
+                      onClick={() => setModalidadSeleccionada('domicilio')}
+                      style={{
+                        flex: '1 1 140px',
+                        padding: '16px',
+                        borderRadius: '16px',
+                        border: modalidadSeleccionada === 'domicilio' ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                        background: modalidadSeleccionada === 'domicilio' ? '#f0f9ff' : '#ffffff',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        fontWeight: '700',
+                        fontSize: '14px',
+                        color: modalidadSeleccionada === 'domicilio' ? '#0369a1' : '#334155',
+                        boxShadow: modalidadSeleccionada === 'domicilio' ? '0 4px 12px rgba(2, 132, 199, 0.15)' : '0 1px 3px rgba(0,0,0,0.02)',
+                        transition: 'all 0.2s'
+                      }}
+                    >
                       🏠 A Domicilio
-                    </label>
+                    </div>
                   )}
                 </div>
               </div>
 
+              {/* Mapa si es presencial */}
               {modalidadSeleccionada === 'presencial' && profesional.direccion_consulta && (
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <p style={{ fontSize: '13px', color: '#334155', margin: 0, fontWeight: '600' }}>
-                    📍 Dirección: {profesional.direccion_consulta}
+                <div style={{ background: '#f8fafc', padding: '18px', borderRadius: '18px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px', boxSizing: 'border-box' }}>
+                  <p style={{ fontSize: '13px', color: '#1e293b', margin: 0, fontWeight: '750', wordBreak: 'break-word', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>📍</span> Dirección de consulta: {profesional.direccion_consulta}
                   </p>
-                  <div style={{ width: '100%', height: '140px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+                  <div style={{ width: '100%', height: '160px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #cbd5e1' }}>
                     <iframe
                       title="Mapa de ubicación"
                       width="100%"
@@ -495,24 +510,26 @@ export function FormularioProfesional() {
                 </div>
               )}
 
+              {/* Datos domicilio */}
               {modalidadSeleccionada === 'domicilio' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: '#f8fafc', padding: '18px', borderRadius: '18px', border: '1px solid #e2e8f0', boxSizing: 'border-box' }}>
                   {comunasCobertura.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Selecciona tu comuna:</label>
+                      <label style={{ fontSize: '13px', fontWeight: '750', color: '#1e293b' }}>Selecciona tu comuna:</label>
                       <select
                         value={comunaSeleccionada}
                         onChange={(e) => setComunaSeleccionada(e.target.value)}
                         required
                         style={{
                           width: '100%',
-                          padding: '12px 14px',
-                          borderRadius: '8px',
+                          padding: '14px 16px',
+                          borderRadius: '12px',
                           border: '1px solid #cbd5e1',
                           background: '#ffffff',
                           color: '#0f172a',
                           fontSize: '14px',
-                          outline: 'none'
+                          outline: 'none',
+                          boxSizing: 'border-box'
                         }}
                       >
                         <option value="">-- Elige tu comuna --</option>
@@ -524,29 +541,34 @@ export function FormularioProfesional() {
                   )}
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Dirección exacta (Calle, número, depto):</label>
+                    <label style={{ fontSize: '13px', fontWeight: '750', color: '#1e293b' }}>Dirección exacta (Calle, número, depto):</label>
                     <input
                       type="text"
                       value={direccionCliente}
                       onChange={(e) => setDireccionCliente(e.target.value)}
-                      placeholder="Ej. Av. Vicuña Mackenna 4320, Depto 42"
+                      placeholder="Ej. Av. Vicuña Mackenna 4320"
                       required
                       style={{
                         width: '100%',
-                        padding: '12px 14px',
-                        borderRadius: '8px',
+                        padding: '14px 16px',
+                        borderRadius: '12px',
                         border: '1px solid #cbd5e1',
                         background: '#ffffff',
                         color: '#0f172a',
                         fontSize: '14px',
-                        outline: 'none'
+                        outline: 'none',
+                        boxSizing: 'border-box'
                       }}
                     />
                   </div>
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '14px' }}>
+              {/* Datos del Paciente */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: '#f8fafc', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#1e293b' }}>
+                  👤 Tus datos de contacto
+                </p>
                 <CamposFormulario 
                   label="Nombre completo" 
                   type="text" 
@@ -554,25 +576,31 @@ export function FormularioProfesional() {
                   onChange={(e) => setNombre(e.target.value)} 
                   placeholder="Ej. María González" 
                 />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <CamposFormulario 
-                    label="Correo electrónico" 
-                    type="email" 
-                    value={email} 
-                    onChange={(e) => setEmail(e.target.value)} 
-                    placeholder="correo@ejemplo.com" 
-                  />
-                  <CamposFormulario 
-                    label="Teléfono" 
-                    type="tel" 
-                    value={telefono} 
-                    onChange={(e) => setTelefono(e.target.value)} 
-                    placeholder="+569..." 
-                  />
+                
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', boxSizing: 'border-box' }}>
+                  <div style={{ flex: '1 1 220px', boxSizing: 'border-box' }}>
+                    <CamposFormulario 
+                      label="Correo electrónico" 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                      placeholder="correo@ejemplo.com" 
+                    />
+                  </div>
+                  <div style={{ flex: '1 1 220px', boxSizing: 'border-box' }}>
+                    <CamposFormulario 
+                      label="Teléfono" 
+                      type="tel" 
+                      value={telefono} 
+                      onChange={(e) => setTelefono(e.target.value)} 
+                      placeholder="+569..." 
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+              {/* Selector de Horarios */}
+              <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
                 <SelectorHorarios 
                   slotSeleccionado={slotSeleccionado} 
                   onChange={setSlotSeleccionado} 
@@ -580,60 +608,168 @@ export function FormularioProfesional() {
                 />
               </div>
 
+              {/* Recomendaciones */}
               {instruccionesList.length > 0 && (
-                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '14px' }}>
-                  <p style={{ fontSize: '13px', fontWeight: '650', color: '#0369a1', margin: '0 0 6px' }}>
-                    💡 Recomendaciones importantes:
-                  </p>
-                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: '#334155', lineHeight: '1.4' }}>
+                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '18px', padding: '18px 22px', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '18px' }}>💡</span>
+                    <h4 style={{ fontSize: '14px', fontWeight: '800', color: '#0369a1', margin: 0 }}>
+                      Indicaciones importantes para tu cita
+                    </h4>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {instruccionesList.map((inst, idx) => (
-                      <li key={idx}>{inst}</li>
+                      <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '13px', color: '#334155' }}>
+                        <span style={{ color: '#0284c7', fontWeight: 'bold' }}>•</span>
+                        <span style={{ lineHeight: '1.4', wordBreak: 'break-word' }}>{inst}</span>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
 
+              {/* Botón de envío principal */}
               <button 
                 type="submit" 
                 disabled={submitting}
                 style={{
                   width: '100%',
-                  padding: '15px',
-                  borderRadius: '14px',
-                  background: '#0284c7',
+                  padding: '18px',
+                  borderRadius: '16px',
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                   color: '#fff',
-                  fontWeight: '600',
+                  fontWeight: '800',
                   border: 'none',
                   cursor: submitting ? 'not-allowed' : 'pointer',
                   opacity: submitting ? 0.7 : 1,
-                  fontSize: '15px',
-                  marginTop: '4px',
-                  boxShadow: '0 10px 15px -3px rgba(2, 132, 199, 0.25)',
-                  transition: 'all 0.2s ease'
+                  fontSize: '16px',
+                  marginTop: '8px',
+                  boxShadow: '0 10px 25px -5px rgba(2, 132, 199, 0.4)',
+                  boxSizing: 'border-box',
+                  transition: 'transform 0.1s ease'
                 }}
               >
-                {submitting ? 'Procesando...' : profesional.requiere_abono && profesional.mp_payment_link ? 'Continuar al pago de abono ➔' : 'Confirmar Reserva'}
+                {submitting ? 'Procesando...' : profesional.requiere_abono && profesional.mp_payment_link ? 'Continuar al pago de abono ➔' : 'Confirmar mi Cita'}
               </button>
             </form>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'center' }}>
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px 20px' }}>
-                <p style={{ fontSize: '14px', color: '#475569', margin: '0 0 6px', fontWeight: '500' }}>
-                  Para confirmar tu reserva se requiere un abono de:
-                </p>
-                <p style={{ fontSize: '28px', fontWeight: '800', color: '#0284c7', margin: '0 0 14px', letterSpacing: '-0.02em' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* Tarjeta Destacada de Monto */}
+              <div style={{ 
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', 
+                border: '2px solid #bae6fd', 
+                borderRadius: '20px', 
+                padding: '24px 20px', 
+                textAlign: 'center',
+                boxShadow: '0 4px 12px rgba(2, 132, 199, 0.08)'
+              }}>
+                <span style={{ 
+                  fontSize: '12px', 
+                  fontWeight: '800', 
+                  color: '#0369a1', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '1px',
+                  display: 'inline-block',
+                  marginBottom: '6px'
+                }}>
+                  🔒 Abono Requerido para Confirmación
+                </span>
+                <div style={{ fontSize: '36px', fontWeight: '900', color: '#0284c7', letterSpacing: '-0.03em', margin: '4px 0' }}>
                   ${Number(profesional.monto_abono || 0).toLocaleString('es-CL')} CLP
+                </div>
+                <p style={{ margin: 0, fontSize: '13px', color: '#334155', fontWeight: '500' }}>
+                  Este monto se descuenta del total del valor del servicio.
                 </p>
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', textAlign: 'left' }}>
-                  <p style={{ fontSize: '13px', color: '#334155', margin: '0 0 8px', fontWeight: '600' }}>Instrucciones:</p>
-                  <ol style={{ fontSize: '13px', color: '#64748b', margin: 0, paddingLeft: '18px', lineHeight: '1.5' }}>
-                    <li>Haz clic en el botón de abajo para pagar tu abono en Mercado Pago.</li>
-                    <li>Cuando termines el pago, regresa a esta misma pantalla.</li>
-                    <li>Se habilitará automáticamente el botón para notificar tu pago por WhatsApp.</li>
-                  </ol>
+              </div>
+
+              {/* Pasos a seguir destacados y súper legibles */}
+              <div style={{ 
+                background: '#ffffff', 
+                border: '1px solid #cbd5e1', 
+                borderRadius: '20px', 
+                padding: '22px 20px', 
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px'
+              }}>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📌</span> Pasos simples para agendar:
+                </h3>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  
+                  {/* Paso 1 */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                    <div style={{ 
+                      width: '28px', 
+                      height: '28px', 
+                      borderRadius: '50%', 
+                      background: '#0284c7', 
+                      color: '#ffffff', 
+                      fontWeight: '800', 
+                      fontSize: '13px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      1
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#1e293b', fontWeight: '600', lineHeight: '1.4', paddingTop: '3px' }}>
+                      Haz clic en <strong style={{ color: '#009ee3', fontWeight: '800' }}>Pagar Abono en Mercado Pago</strong> (se abrirá en una nueva ventana).
+                    </div>
+                  </div>
+
+                  {/* Paso 2 */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                    <div style={{ 
+                      width: '28px', 
+                      height: '28px', 
+                      borderRadius: '50%', 
+                      background: '#0284c7', 
+                      color: '#ffffff', 
+                      fontWeight: '800', 
+                      fontSize: '13px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      2
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#1e293b', fontWeight: '600', lineHeight: '1.4', paddingTop: '3px' }}>
+                      Realiza tu pago seguro mediante débito, crédito o transferencia.
+                    </div>
+                  </div>
+
+                  {/* Paso 3 */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                    <div style={{ 
+                      width: '28px', 
+                      height: '28px', 
+                      borderRadius: '50%', 
+                      background: '#0284c7', 
+                      color: '#ffffff', 
+                      fontWeight: '800', 
+                      fontSize: '13px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      3
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#1e293b', fontWeight: '600', lineHeight: '1.4', paddingTop: '3px' }}>
+                      Regresa a esta ventana y presiona <strong style={{ color: '#16a34a', fontWeight: '800' }}>Enviar comprobante por WhatsApp</strong> para finalizar.
+                    </div>
+                  </div>
+
                 </div>
               </div>
 
+              {/* Botón Principal de Mercado Pago */}
               <button
                 type="button"
                 onClick={handlePagarMercadoPago}
@@ -641,26 +777,45 @@ export function FormularioProfesional() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '8px',
-                  padding: '15px',
-                  borderRadius: '14px',
+                  gap: '12px',
+                  padding: '18px 24px',
+                  borderRadius: '16px',
                   background: '#009ee3',
-                  color: '#fff',
-                  fontWeight: '700',
+                  color: '#ffffff',
+                  fontWeight: '800',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: '15px',
-                  boxShadow: '0 10px 15px -3px rgba(0, 158, 227, 0.25)'
+                  fontSize: '16px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 158, 227, 0.4)',
+                  boxSizing: 'border-box',
+                  transition: 'transform 0.1s ease'
                 }}
               >
-                <span>💳</span> Pagar Abono en Mercado Pago
+                <span style={{ fontSize: '20px' }}>💳</span> 
+                <span>Pagar Abono en Mercado Pago</span>
               </button>
 
+              {/* Acción posterior al inicio del pago */}
               {pagoIniciado && (
-                <div style={{ animation: 'fadeIn 0.3s ease-in-out', display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '16px' }}>
-                  <p style={{ fontSize: '13px', color: '#166534', fontWeight: '600', background: '#f0fdf4', padding: '10px', borderRadius: '8px', border: '1px solid #bbf7d0', margin: 0 }}>
-                    ¿Ya realizaste el pago en la otra pestaña?
-                  </p>
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  gap: '14px', 
+                  background: '#f0fdf4',
+                  border: '2px solid #86efac', 
+                  padding: '20px', 
+                  borderRadius: '20px',
+                  boxSizing: 'border-box'
+                }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontSize: '14px', color: '#14532d', fontWeight: '800', margin: '0 0 4px' }}>
+                      ¿Ya realizaste tu pago en Mercado Pago?
+                    </p>
+                    <p style={{ fontSize: '12px', color: '#166534', margin: 0 }}>
+                      Presiona el botón de abajo para notificar y confirmar tu hora en la agenda.
+                    </p>
+                  </div>
+
                   <button
                     type="button"
                     onClick={handleAvisarWhatsApp}
@@ -670,24 +825,27 @@ export function FormularioProfesional() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: '8px',
-                      padding: '15px',
+                      gap: '10px',
+                      padding: '16px',
                       borderRadius: '14px',
                       background: '#22c55e',
-                      color: '#fff',
-                      fontWeight: '700',
+                      color: '#ffffff',
+                      fontWeight: '800',
                       border: 'none',
                       cursor: submitting ? 'not-allowed' : 'pointer',
                       opacity: submitting ? 0.7 : 1,
                       fontSize: '15px',
-                      boxShadow: '0 10px 15px -3px rgba(34, 197, 94, 0.25)'
+                      boxShadow: '0 8px 20px rgba(34, 197, 94, 0.35)',
+                      boxSizing: 'border-box'
                     }}
                   >
-                    <span>💬</span> {submitting ? 'Registrando cita...' : 'Ya pagué, enviar comprobante por WhatsApp'}
+                    <span style={{ fontSize: '18px' }}>💬</span> 
+                    <span>{submitting ? 'Registrando cita...' : 'Ya pagué, enviar comprobante por WhatsApp'}</span>
                   </button>
                 </div>
               )}
 
+              {/* Volver */}
               <button 
                 type="button" 
                 onClick={() => setPasoPago(false)}
@@ -698,12 +856,14 @@ export function FormularioProfesional() {
                   fontSize: '13px',
                   cursor: 'pointer',
                   textDecoration: 'underline',
-                  fontWeight: '500',
-                  marginTop: '4px'
+                  fontWeight: '700',
+                  alignSelf: 'center',
+                  padding: '6px'
                 }}
               >
                 ← Volver a la selección de horarios
               </button>
+
             </div>
           )}
         </div>

@@ -129,6 +129,10 @@ export function FormularioProfesional() {
       setMensajeAlerta('Por favor completa todos tus datos de contacto.');
       return;
     }
+    if (!servicioSeleccionado) {
+      setMensajeAlerta('Por favor selecciona un servicio.');
+      return;
+    }
     if (modalidadSeleccionada === 'domicilio') {
       const comunasCobertura = Array.isArray(profesional.comunas_cobertura) ? profesional.comunas_cobertura : [];
       if (comunasCobertura.length > 0 && !comunaSeleccionada) {
@@ -169,7 +173,8 @@ export function FormularioProfesional() {
         p_end_time: endDateObj.toISOString(),
         p_modalidad: modalidadSeleccionada,
         p_comuna: modalidadSeleccionada === 'domicilio' ? comunaSeleccionada : null,
-        p_direccion: modalidadSeleccionada === 'domicilio' ? direccionCliente.trim() : null
+        p_direccion: modalidadSeleccionada === 'domicilio' ? direccionCliente.trim() : null,
+        p_servicio: servicioSeleccionado
       });
 
       if (rpcError) throw rpcError;
@@ -201,7 +206,7 @@ export function FormularioProfesional() {
     const telefonoClinica = String(telefonoRaw).replace(/\D/g, ''); 
     
     const textoMensaje = encodeURIComponent(
-      `Hola ${profesional.full_name || 'Clínica'}, acabo de realizar la reserva para mi cita de ${servicioSeleccionado} (${modalidadSeleccionada}${modalidadSeleccionada === 'domicilio' ? ` en ${comunaSeleccionada},${direccionCliente}` : ''}) agendada el día ${slotDate} a las ${horaLegible}. Mi nombre es ${nombre}.`
+      `Hola ${profesional.full_name || 'Clínica'}, acabo de realizar la reserva para mi cita de ${servicioSeleccionado} (${modalidadSeleccionada}${modalidadSeleccionada === 'domicilio' ? ` en ${comunaSeleccionada}, ${direccionCliente}` : ''}) agendada el día ${slotDate} a las ${horaLegible}. Mi nombre es ${nombre}.`
     );
 
     window.open(`https://wa.me/${telefonoClinica}?text=${textoMensaje}`, '_blank');
@@ -320,7 +325,7 @@ export function FormularioProfesional() {
           </div>
         </div>
 
-        {/* Contenido principal con padding cómodo */}
+        {/* Contenido principal */}
         <div style={{ padding: '36px 32px', boxSizing: 'border-box' }}>
           <MensajeAlerta mensaje={mensajeAlerta} />
           
@@ -683,7 +688,7 @@ export function FormularioProfesional() {
                 </p>
               </div>
 
-              {/* Pasos a seguir destacados y súper legibles */}
+              {/* Pasos a seguir */}
               <div style={{ 
                 background: '#ffffff', 
                 border: '1px solid #cbd5e1', 
